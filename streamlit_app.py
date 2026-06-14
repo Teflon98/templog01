@@ -4,6 +4,8 @@ from supabase import create_client
 
 # 1. Page Configuration for Mobile
 st.set_page_config(page_title="Climate Tracker", layout="centered")
+st.logo_or_whatever_else # Just a placeholder marker
+st.fragment(run_every=300) # Automatically reruns the script every 5 minutes (300 seconds)
 
 # 2. Connect to Supabase using the secure secrets
 url = st.secrets["SUPABASE_URL"]
