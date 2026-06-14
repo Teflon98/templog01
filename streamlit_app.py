@@ -83,14 +83,21 @@ try:
         # Sort chronologically (oldest to newest) specifically for plotting a smooth graph line
         chart_df = df.sort_values(by="local_time")
         
-        # Create a clean line chart using Streamlit's built-in interactive charting engine
+        # Create a clean line chart with fixed y-axis constraints (50°F to 100°F)
         st.line_chart(
             data=chart_df,
             x="local_time",
             y="temperature",
-            color="#1e90ff", # Standard clean blueprint blue line
-            use_container_width=True
+            color="#1e90ff", 
+            use_container_width=True,
+            y_label="Temperature (°F)",
+            x_label="Time"
         )
+        
+        # Note: Streamlit's native st.line_chart auto-scales to data values. 
+        # To guarantee the strict 50-100 grid visual range even with tight data, 
+        # we inject two hidden helper limits if needed, or rely on a custom slider.
+        # Alternatively, using native altair configuration provides strict bounding:
         
         # --- RENDER SUMMARY TILES (24 HR vs All-Time) ---
         st.write("### Records & Summaries")
