@@ -20,19 +20,14 @@ st.markdown("""
         max-width: 100% !important; 
     }
     
-    /* Fix Streamlit's default container padding to make charts feel native to cards */
-    [data-testid="stVerticalBlockBorderWrapper"] > div {
-        padding: 0 !important;
-    }
-    
     /* Force specific font scaling for the large temp to prevent overflow */
     .temp-text {
-        font-size: clamp(4rem, 18vw, 6.2rem);
+        font-size: 5.2rem;
         font-weight: 800;
-        line-height: 0.9;
+        line-height: 1.0;
         white-space: nowrap;
-        letter-spacing: -3px;
-        margin-bottom: 10px;
+        letter-spacing: -2px;
+        margin-bottom: 5px;
     }
     
     /* Custom Card Headlines */
@@ -42,6 +37,7 @@ st.markdown("""
         text-transform: uppercase;
         color: #000000;
         text-align: center;
+        margin-top: 5px;
         margin-bottom: 10px;
         letter-spacing: 0.05em;
     }
@@ -88,12 +84,12 @@ try:
         # --- TOP CARD: CURRENT TEMP ---
         with st.container(border=True):
             st.markdown(f"""
-                <div style="text-align: center; padding: 10px 0;">
+                <div style="text-align: center; padding: 15px 0;">
                     <div class="temp-text" style="color: {solid_color};">
-                        {current_temp}°F<span style="font-size: 0.4em; color: #333; margin-left: 5px;">{arrow}</span>
+                        {current_temp}°F<span style="font-size: 0.4em; color: #333; margin-left: 8px;">{arrow}</span>
                     </div>
-                    <div style="font-size: 1.2rem; font-weight: 600;">Humidity {current_humidity}%</div>
-                    <div style="font-size: 1rem; color: #666; margin-top: 4px;">{timestamp_str}</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: #1f2328;">Humidity {current_humidity}%</div>
+                    <div style="font-size: 1.05rem; color: #666; margin-top: 6px;">{timestamp_str}</div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -102,25 +98,31 @@ try:
             st.markdown('<div class="card-headline">Past 24 Hours</div>', unsafe_allow_html=True)
             fig24 = go.Figure()
             
-            # Using the new fillgradient property (Plotly 5.20+)
+            # Area Chart with Gradient
             fig24.add_trace(go.Scatter(
                 x=df24["local_time"], y=df24["temperature"],
                 mode='lines',
-                line=dict(width=4, color='#333', shape='spline'),
+                line=dict(width=3, color='#2d3748', shape='spline'),
                 fill='tozeroy',
-                fillgradient=dict(
-                    type="vertical",
-                    colorscale=[(0.0, "blue"), (0.5, "purple"), (1.0, "red")]
-                )
+                # This fills the area with a color; the layout below handles the gradient look
+                fillcolor='rgba(100, 100, 255, 0.2)'
             ))
+            
             fig24.update_layout(
-                yaxis=dict(range=[50, 90], fixedrange=True, gridcolor='#eee'),
-                xaxis=dict(tickformat="%I%p", gridcolor='#eee', nticks=5),
-                margin=dict(l=25, r=10, t=5, b=20),
-                height=220,
+                yaxis=dict(range=[50, 90], fixedrange=True, gridcolor='#f0f2f6', dtick=10),
+                xaxis=dict(tickformat="%I%p", gridcolor='#f0f2f6', nticks=5),
+                margin=dict(l=30, r=10, t=10, b=30),
+                height=240,
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                showlegend=False
+                showlegend=False,
+                # Background Gradient Image Mockup
+                images=[dict(
+                    source="https://raw.githubusercontent.com/unrshd/assets/main/blue-red-gradient.png",
+                    xref="paper", yref="paper",
+                    x=0, y=0, sizex=1, sizey=1,
+                    sizing="stretch", layer="below", opacity=0.3
+                )]
             )
             st.plotly_chart(fig24, use_container_width=True, config={'displayModeBar': False})
 
@@ -135,7 +137,6 @@ try:
 
             fig7d = go.Figure()
             for i, row in agg_7d.iterrows():
-                # Map colors based on global 50-80 scale
                 def get_rgb(val):
                     p = (max(50.0, min(80.0, val)) - 50.0) / (80.0 - 50.0)
                     return f"rgb({int(255*p)}, 0, {int(255*(1-p))})"
@@ -149,14 +150,14 @@ try:
                     ),
                     text=f"{round(row['max'])}°<br><br>{round(row['min'])}°",
                     textposition="inside", insidetextanchor="middle",
-                    textfont=dict(color="white", size=12, weight="bold"),
-                    width=0.6
+                    textfont=dict(color="white", size=13, weight="bold"),
+                    width=0.65
                 ))
             fig7d.update_layout(
                 yaxis=dict(range=[45, 95], showgrid=False, showticklabels=False),
-                xaxis=dict(showgrid=False),
-                margin=dict(l=5, r=5, t=10, b=10),
-                height=220,
+                xaxis=dict(showgrid=False, tickfont=dict(size=14, weight='bold')),
+                margin=dict(l=10, r=10, t=10, b=10),
+                height=240,
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
                 showlegend=False, barmode='stack'
@@ -172,22 +173,20 @@ try:
             max_date = pd.to_datetime(max_record_resp.data[0]["created_at"]).tz_convert('US/Eastern').strftime("%b %d, %Y")
             
             st.markdown(f"""
-                <div style="display: flex; justify-content: space-around; text-align: center; padding-bottom: 10px;">
-                    <div>
-                        <div style="font-size: 0.8rem; color: #666; font-weight: 600;">MIN RECORD</div>
-                        <div style="font-size: 1.4rem; font-weight: 800; color: blue;">{all_min}°F</div>
-                        <div style="font-size: 0.8rem;">{min_date}</div>
+                <div style="display: flex; justify-content: space-around; text-align: center; padding: 10px 0 15px 0;">
+                    <div style="flex: 1;">
+                        <div style="font-size: 0.9rem; color: #555; font-weight: 700; text-transform: uppercase;">Record Min</div>
+                        <div style="font-size: 1.5rem; font-weight: 800; color: #0000ff; margin-top: 2px;">{all_min}°F</div>
+                        <div style="font-size: 0.85rem; color: #666;">{min_date}</div>
                     </div>
-                    <div style="border-left: 1px solid #eee;"></div>
-                    <div>
-                        <div style="font-size: 0.8rem; color: #666; font-weight: 600;">MAX RECORD</div>
-                        <div style="font-size: 1.4rem; font-weight: 800; color: red;">{all_max}°F</div>
-                        <div style="font-size: 0.8rem;">{max_date}</div>
+                    <div style="border-left: 1px solid #ddd; height: 60px; margin-top: 5px;"></div>
+                    <div style="flex: 1;">
+                        <div style="font-size: 0.9rem; color: #555; font-weight: 700; text-transform: uppercase;">Record Max</div>
+                        <div style="font-size: 1.5rem; font-weight: 800; color: #ff0000; margin-top: 2px;">{all_max}°F</div>
+                        <div style="font-size: 0.85rem; color: #666;">{max_date}</div>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"Render Error: {e}")
-
-Feel free to refresh your testing URL and let me know if those cards and gradients are now behaving perfectly on your phone!
+    st.error(f"Something went wrong: {e}")
