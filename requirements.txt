@@ -1,3 +1,4 @@
 supabase
 pandas
 tzdata
+plotly
