@@ -53,7 +53,7 @@ url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 supabase = create_client(url, key)
 
-@st.fragment(run_every=1)
+@st.fragment(run_every=5)
 def render_dashboard():
     try:
         # --- 3. FETCH SENSOR ARRAYS ---
@@ -115,29 +115,32 @@ def render_dashboard():
                     </div>
                 """, unsafe_allow_html=True)
 
-                # Countdown wick — rendered via components.html to bypass Streamlit's
-                # HTML sanitizer, which strips float:right and certain inline styles.
-                # The wick recedes from right to left: full=blue, empty=red.
-                # Linear gradient always spans full blue→red; clip width shrinks from right.
-                wick_pct = f"{pct_left * 100:.2f}"
+                # Countdown wick — components.html bypasses Streamlit's HTML sanitizer.
+                # Technique: full-width blue→red gradient is always rendered underneath.
+                # A white mask div anchored to the right grows from 0% → 100% as time
+                # elapses, "covering" the gradient like a piece of paper sliding over it.
+                # The exposed gradient therefore shrinks from right to left.
+                # run_every=5 on the fragment means the iframe remounts every 5s, not 1s,
+                # which eliminates the per-second flash. The visual position is correct on
+                # each remount since pct_left is recalculated from wall-clock time.
+                covered_pct = f"{(1.0 - pct_left) * 100:.2f}"
                 components.html(f"""
-                    <div style="width:100%; padding: 10px 0 4px 0; box-sizing:border-box;">
+                    <div style="width:100%; padding:10px 0 4px 0; box-sizing:border-box;">
                         <div style="
                             width: 80%;
                             margin: 0 auto;
-                            background-color: #f1f5f9;
                             border-radius: 10px;
                             height: 6px;
                             overflow: hidden;
-                            position: relative;">
+                            position: relative;
+                            background: linear-gradient(to right, #0000ff, #ff0000);">
                             <div style="
                                 position: absolute;
                                 right: 0;
                                 top: 0;
-                                width: {wick_pct}%;
+                                width: {covered_pct}%;
                                 height: 100%;
-                                border-radius: 10px;
-                                background: linear-gradient(to right, #ff0000, #0000ff);">
+                                background: #f1f5f9;">
                             </div>
                         </div>
                     </div>
@@ -245,7 +248,7 @@ def render_dashboard():
                         text=f"<b>{round(t_max)}°</b>",
                         showarrow=False,
                         yanchor="bottom",
-                        font=dict(color="#1e293b", size=11),
+                        font=dict(color="#1e293b", size=15),
                     ))
                     annotations.append(dict(
                         x=slot, y=t_min,
@@ -253,7 +256,7 @@ def render_dashboard():
                         text=f"<b>{round(t_min)}°</b>",
                         showarrow=False,
                         yanchor="top",
-                        font=dict(color="#1e293b", size=11),
+                        font=dict(color="#1e293b", size=15),
                     ))
 
                 fig7d.update_layout(
@@ -267,10 +270,10 @@ def render_dashboard():
                         ticktext=day_labels,
                         showgrid=False,
                         zeroline=False,
-                        tickfont=dict(size=12, color='#1e293b', weight='bold'),
+                        tickfont=dict(size=16, color='#1e293b', weight='bold'),
                         range=[-0.5, 6.5]
                     ),
-                    margin=dict(l=10, r=10, t=15, b=10),
+                    margin=dict(l=10, r=10, t=25, b=10),
                     height=220,
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)',
