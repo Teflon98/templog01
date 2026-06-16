@@ -3,35 +3,45 @@ import pandas as pd
 import numpy as np
 from supabase import create_client
 import plotly.graph_objects as go
+import datetime
 
 # --- 1. CONFIGURATION & DEVICE VIEWPORT WRAPPER ---
 st.set_page_config(page_title="Office Climate v2", layout="wide")
-st.fragment(run_every=300)
+st.fragment(run_every=1) # High-frequency refresh to keep the countdown wick smoothly ticking down
 
-# Bulletproof global CSS injection for borders, layout spacing, and typography scaling
+# Deep CSS injection to explicitly lock card borders, structure layout nodes, and format the countdown wick
 st.markdown("""
     <style>
-    /* Force centered desktop alignment at 1000px, while keeping mobile fluid */
+    /* Desktop vs Fluid Mobile viewport alignment wrapper */
     .block-container {
         max-width: 1000px !important;
-        padding-top: 1.5rem !important;
+        padding-top: 1.2rem !important;
         padding-bottom: 2rem !important;
-        padding-left: 1.2rem !important; /* Doubled padding for side-refresh safety */
+        padding-left: 1.2rem !important; /* Side gutter room for touch-pull refresh protection */
         padding-right: 1.2rem !important;
         margin: 0 auto !important;
     }
     
-    /* Target explicit internal Streamlit layout nodes to force card borders */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
+    /* Dual-targeted card grouping properties to force visible borders */
+    div[data-testid="stVerticalBlockBorderWrapper"], 
+    div[data-testid="stVerticalBlock"] > div:has(div[data-testid="stContainer"]) {
         border: 1px solid #e2e8f0 !important;
         background-color: #ffffff !important;
         border-radius: 16px !important;
-        padding: 22px !important;
+        padding: 20px !important;
         box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.02) !important;
         margin-bottom: 1.2rem !important;
     }
     
-    /* Lower line-height to completely protect the top metric from clipping */
+    /* Clean out conflicting internal container layout paddings */
+    div[data-testid="stContainer"] {
+        border: none !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+    }
+    
+    /* Lower line-height to completely protect the top metric from top-clipping */
     .hero-temp-frame {
         text-align: center;
         padding: 5px 0;
@@ -53,6 +63,22 @@ st.markdown("""
         text-align: center;
         margin-bottom: 18px;
         letter-spacing: 0.05em;
+    }
+    
+    /* Dynamic Countdown Wick Containers */
+    .wick-wrapper {
+        width: 80%;
+        margin: 10px auto 12px auto;
+        background-color: #f1f5f9;
+        border-radius: 4px;
+        overflow: hidden;
+        height: 6px; /* Approximately 1/3 height of typical text line tracking indices */
+    }
+    
+    .wick-bar {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 1s linear, background 1s ease;
     }
     
     /* Clean interface sanitation */
@@ -84,7 +110,24 @@ try:
         latest_record = df24.iloc[-1]
         current_temp = float(latest_record["temperature"])
         current_humidity = float(latest_record["humidity"])
-        timestamp_str = latest_record["local_time"].strftime("%A, %B %d, %Y, %I:%M %p").replace("AM", "a.m.").replace("PM", "p.m.")
+        
+        # Datetime calculations for countdown tracking
+        last_reading_time = latest_record["local_time"]
+        now_time = datetime.datetime.now(datetime.timezone.utc).astimezone(datetime.timezone(datetime.timedelta(hours=-5), 'EST'))
+        
+        # Calculate seconds elapsed in current 5-minute interval chunk (300 seconds total)
+        seconds_elapsed = (now_time - last_reading_time).total_seconds()
+        seconds_left = max(0, min(300, 300 - (seconds_elapsed % 300)))
+        pct_left = (seconds_left / 300.0)
+        
+        # Color shifting math: Shifts from pure Blue to Deep Red as time ticks down and recedes
+        # High percentage left = Blue dominant; Low percentage left = Red dominant
+        wick_r = int(255 * (1.0 - pct_left))
+        wick_g = 0
+        wick_b = int(255 * pct_left)
+        wick_color = f"rgb({wick_r}, {wick_g}, {wick_b})"
+        
+        timestamp_str = last_reading_time.strftime("%A, %B %d, %Y, %I:%M %p").replace("AM", "a.m.").replace("PM", "p.m.")
 
         # Real-time delta trajectory arrow logic
         arrow = "→"
@@ -105,7 +148,12 @@ try:
                         {current_temp}°F<span style="font-size: 0.45em; color: #1e293b; margin-left: 8px; vertical-align: middle;">{arrow}</span>
                     </div>
                     <div style="font-size: 1.3rem; font-weight: 700; color: #1e293b; margin-top: 4px;">Humidity {current_humidity}%</div>
-                    <div style="font-size: 0.95rem; color: #64748b; margin-top: 6px; font-weight: 400;">{timestamp_str}</div>
+                    
+                    <div class="wick-wrapper">
+                        <div class="wick-bar" style="width: {pct_left * 100}%; background: {wick_color};"></div>
+                    </div>
+                    
+                    <div style="font-size: 0.95rem; color: #64748b; font-weight: 400;">{timestamp_str}</div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -120,14 +168,13 @@ try:
                 mode='lines',
                 line=dict(width=3.5, color='#1e293b', shape='spline'),
                 fill='tozeroy',
-                # True linear rendering via modern Plotly layout engine properties
                 fillgradient=dict(
                     type="vertical",
                     colorscale=[
-                        (0.0, "rgba(0, 0, 255, 0.0)"),    # Crisp cold baseline anchor
-                        (0.4, "rgba(0, 0, 255, 0.2)"),    # Blue
-                        (0.7, "rgba(128, 0, 128, 0.25)"), # Purple transitional vector
-                        (1.0, "rgba(255, 0, 0, 0.4)")     # Deep warm upper thermal ceiling
+                        (0.0, "rgba(0, 0, 255, 0.0)"),
+                        (0.4, "rgba(0, 0, 255, 0.2)"),
+                        (0.7, "rgba(128, 0, 128, 0.25)"),
+                        (1.0, "rgba(255, 0, 0, 0.4)")
                     ]
                 )
             ))
@@ -142,7 +189,7 @@ try:
             )
             st.plotly_chart(fig24, use_container_width=True, config={'displayModeBar': False})
 
-        # --- CARD 3: PAST 7 DAYS (STRICT VERTICAL CHRONOLOGICAL RANGE WINDOWS) ---
+        # --- CARD 3: PAST 7 DAYS (EXPLICIT VERTICAL CHRONOLOGICAL MARKERS) ---
         with st.container():
             st.markdown('<div class="card-headline-text">Past 7 Days</div>', unsafe_allow_html=True)
             
@@ -152,19 +199,20 @@ try:
             agg_7d['day_name'] = pd.Categorical(agg_7d['day_name'], categories=day_order, ordered=True)
             agg_7d = agg_7d.sort_values('day_name')
 
-            # Build a singular trace to completely prevent auto-rotation orientation flips
             fig7d = go.Figure()
+            
+            # Forcing layout engine to parse vertical tracks explicitly by passing orientation keys
             fig7d.add_trace(go.Bar(
                 x=agg_7d["day_name"].astype(str),
                 y=agg_7d["max"] - agg_7d["min"],
                 base=agg_7d["min"],
+                orientation='v', # STRICTLY forces vertical mode execution
                 marker=dict(
                     color=agg_7d["max"],
-                    # Maps a global spatial thermal scale gradient directly through the column geometries
                     colorscale=[
-                        [0.0, "rgb(0, 0, 255)"],    # Cold floor
-                        [0.5, "rgb(128, 0, 128)"],  # Transitional mid
-                        [1.0, "rgb(255, 0, 0)"]     # Warm high ceiling
+                        [0.0, "rgb(0, 0, 255)"],
+                        [0.5, "rgb(128, 0, 128)"],
+                        [1.0, "rgb(255, 0, 0)"]
                     ],
                     line=dict(width=0)
                 ),
@@ -186,17 +234,15 @@ try:
             )
             st.plotly_chart(fig7d, use_container_width=True, config={'displayModeBar': False})
 
-        # --- CARD 4: ALL-TIME RECORDS ---
+        # --- CARD 4: RECORDS CELLS ONLY (COMPACT DESIGN SANS HEADING) ---
         with st.container():
-            st.markdown('<div class="card-headline-text">All-Time Records</div>', unsafe_allow_html=True)
-            
             all_min = float(min_record_resp.data[0]["temperature"]) if min_record_resp.data else current_temp
             all_max = float(max_record_resp.data[0]["temperature"]) if max_record_resp.data else current_temp
             min_date = pd.to_datetime(min_record_resp.data[0]["created_at"]).tz_convert('US/Eastern').strftime("%b %d, %Y")
             max_date = pd.to_datetime(max_record_resp.data[0]["created_at"]).tz_convert('US/Eastern').strftime("%b %d, %Y")
             
             st.markdown(f"""
-                <div style="display: flex; justify-content: space-around; text-align: center; padding: 5px 0 10px 0; font-family: sans-serif;">
+                <div style="display: flex; justify-content: space-around; text-align: center; padding: 5px 0; font-family: sans-serif;">
                     <div style="flex: 1;">
                         <div style="font-size: 0.85rem; color: #64748b; font-weight: 700; letter-spacing: 0.03em;">RECORD MINIMUM</div>
                         <div style="font-size: 1.6rem; font-weight: 800; color: #0000ff; margin-top: 3px;">{all_min}°F</div>
