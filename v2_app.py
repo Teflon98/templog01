@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 from supabase import create_client
@@ -102,6 +103,7 @@ def render_dashboard():
 
             # --- CARD 1: HERO ---
             with st.container(border=True):
+                # Temperature + humidity (Streamlit markdown is fine for these)
                 st.markdown(f"""
                     <div class="hero-temp-frame">
                         <div class="temp-value-display" style="color: {solid_color};">
@@ -110,21 +112,41 @@ def render_dashboard():
                         </div>
                         <div style="font-size:1.3rem; font-weight:700; color:#1e293b;
                             margin-top:4px;">Humidity {current_humidity}%</div>
+                    </div>
+                """, unsafe_allow_html=True)
 
-                        <!-- Countdown wick -->
-                        <div style="width:80%; margin:14px auto 6px auto;
-                             background-color:#f1f5f9; border-radius:10px;
-                             height:6px; overflow:hidden;">
-                            <div style="width:{pct_left*100:.2f}%; height:100%;
-                                 border-radius:10px;
-                                 background: linear-gradient(to left, rgb({wick_r},0,{wick_b}), #0000ff);
-                                 float:right;">
+                # Countdown wick — rendered via components.html to bypass Streamlit's
+                # HTML sanitizer, which strips float:right and certain inline styles.
+                # The wick recedes from right to left: full=blue, empty=red.
+                # Linear gradient always spans full blue→red; clip width shrinks from right.
+                wick_pct = f"{pct_left * 100:.2f}"
+                components.html(f"""
+                    <div style="width:100%; padding: 10px 0 4px 0; box-sizing:border-box;">
+                        <div style="
+                            width: 80%;
+                            margin: 0 auto;
+                            background-color: #f1f5f9;
+                            border-radius: 10px;
+                            height: 6px;
+                            overflow: hidden;
+                            position: relative;">
+                            <div style="
+                                position: absolute;
+                                right: 0;
+                                top: 0;
+                                width: {wick_pct}%;
+                                height: 100%;
+                                border-radius: 10px;
+                                background: linear-gradient(to right, #ff0000, #0000ff);">
                             </div>
                         </div>
-
-                        <div style="font-size:0.95rem; color:#64748b;
-                            font-weight:400; margin-top:6px;">{timestamp_str}</div>
                     </div>
+                """, height=26, scrolling=False)
+
+                # Timestamp below wick
+                st.markdown(f"""
+                    <div style="text-align:center; font-size:0.95rem; color:#64748b;
+                        font-weight:400; margin-bottom:6px;">{timestamp_str}</div>
                 """, unsafe_allow_html=True)
 
             # --- CARD 2: PAST 24 HOURS ---
@@ -216,29 +238,28 @@ def render_dashboard():
                             layer="below"
                         ))
 
-                    # Max label just inside top of bar
+                    # Max label above top of bar, min label below bottom — black text
                     annotations.append(dict(
-                        x=slot, y=t_max - 0.5,
+                        x=slot, y=t_max,
                         xref="x", yref="y",
                         text=f"<b>{round(t_max)}°</b>",
                         showarrow=False,
-                        yanchor="top",
-                        font=dict(color="white", size=11),
+                        yanchor="bottom",
+                        font=dict(color="#1e293b", size=11),
                     ))
-                    # Min label just inside bottom of bar
                     annotations.append(dict(
-                        x=slot, y=t_min + 0.5,
+                        x=slot, y=t_min,
                         xref="x", yref="y",
                         text=f"<b>{round(t_min)}°</b>",
                         showarrow=False,
-                        yanchor="bottom",
-                        font=dict(color="white", size=11),
+                        yanchor="top",
+                        font=dict(color="#1e293b", size=11),
                     ))
 
                 fig7d.update_layout(
                     shapes=shapes,
                     annotations=annotations,
-                    yaxis=dict(range=[RANGE_MIN, RANGE_MAX], fixedrange=True,
+                    yaxis=dict(range=[44, 96], fixedrange=True,
                                showgrid=False, zeroline=False, showticklabels=False),
                     xaxis=dict(
                         tickmode="array",
