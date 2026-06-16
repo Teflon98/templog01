@@ -165,78 +165,74 @@ def render_dashboard():
             with st.container(border=True):
                 st.markdown('<div class="card-headline-text">Past 7 Days</div>', unsafe_allow_html=True)
 
-                df7d["day_name"] = df7d["local_time"].dt.strftime("%a")
-                agg_7d = df7d.groupby("day_name")["temperature"].agg(["min", "max"]).reset_index()
-                day_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-                agg_7d['day_name'] = pd.Categorical(agg_7d['day_name'], categories=day_order, ordered=True)
-                agg_7d = agg_7d.sort_values('day_name')
-
                 RANGE_MIN, RANGE_MAX = 50.0, 90.0
+                SLICES = 60
 
                 def temp_to_color(t):
-                    """Map temperature → absolute blue-to-red within 50–90°F."""
                     p = (max(RANGE_MIN, min(RANGE_MAX, float(t))) - RANGE_MIN) / (RANGE_MAX - RANGE_MIN)
-                    r = int(255 * p)
-                    b = int(255 * (1.0 - p))
-                    return f"rgb({r},0,{b})"
+                    return f"rgb({int(255*p)},0,{int(255*(1.0-p))})"
 
-                # Build vertical gradient bars using SVG shapes via Plotly layout shapes.
-                # Each bar = stack of thin horizontal slices, each colored by absolute temp.
-                SLICES = 60  # resolution of gradient per bar
+                # Build day order dynamically: today on the right (slot 6), 6 days ago on the left (slot 0)
+                today_et = now_time.date()
+                ordered_dates = [today_et - datetime.timedelta(days=d) for d in range(6, -1, -1)]
+                # Labels: show abbreviated day name; mark today
+                day_labels = []
+                for d in ordered_dates:
+                    lbl = d.strftime("%a")
+                    if d == today_et:
+                        lbl = "Today"
+                    day_labels.append(lbl)
+
+                # Aggregate by calendar date in Eastern time
+                df7d["date_et"] = df7d["local_time"].dt.date
+                agg_map = df7d.groupby("date_et")["temperature"].agg(["min", "max"]).to_dict("index")
+
                 fig7d = go.Figure()
-
-                # Invisible scatter just to set axes and force sizing
-                fig7d.add_trace(go.Scatter(x=day_order, y=[None]*7, mode='markers',
-                                           marker=dict(opacity=0)))
-
                 shapes = []
                 annotations = []
 
-                for i, row in agg_7d.iterrows():
-                    day   = row["day_name"]
-                    t_min = float(row["min"])
-                    t_max = float(row["max"])
-                    x_idx = day_order.index(day)
+                for slot, cal_date in enumerate(ordered_dates):
+                    if cal_date not in agg_map:
+                        continue
+                    t_min = float(agg_map[cal_date]["min"])
+                    t_max = float(agg_map[cal_date]["max"])
 
-                    # Bar occupies ±0.22 category units on either side of center
-                    x0 = x_idx - 0.22
-                    x1 = x_idx + 0.22
+                    # Numeric x axis: slot 0 = leftmost, slot 6 = rightmost (today)
+                    x0 = slot - 0.28
+                    x1 = slot + 0.28
 
-                    # Slice from t_min to t_max
-                    step = (t_max - t_min) / SLICES if t_max != t_min else 1.0
+                    # Gradient bar: stack of slices each colored by absolute temp
                     for s in range(SLICES):
                         frac_lo = s / SLICES
                         frac_hi = (s + 1) / SLICES
-                        y0 = t_min + frac_lo  * (t_max - t_min)
-                        y1 = t_min + frac_hi  * (t_max - t_min)
-                        mid_t = (y0 + y1) / 2.0
-                        color = temp_to_color(mid_t)
+                        y0 = t_min + frac_lo * (t_max - t_min)
+                        y1 = t_min + frac_hi * (t_max - t_min)
                         shapes.append(dict(
                             type="rect",
                             xref="x", yref="y",
-                            x0=x0, x1=x1,
-                            y0=y0, y1=y1,
-                            fillcolor=color,
+                            x0=x0, x1=x1, y0=y0, y1=y1,
+                            fillcolor=temp_to_color((y0 + y1) / 2.0),
                             line=dict(width=0),
                             layer="below"
                         ))
 
-                    # Labels: max on top, min on bottom (white text)
+                    # Max label just inside top of bar
                     annotations.append(dict(
-                        x=x_idx, y=t_max,
+                        x=slot, y=t_max - 0.5,
+                        xref="x", yref="y",
                         text=f"<b>{round(t_max)}°</b>",
-                        showarrow=False,
-                        yanchor="bottom",
-                        font=dict(color="white", size=11),
-                        bgcolor="rgba(0,0,0,0)"
-                    ))
-                    annotations.append(dict(
-                        x=x_idx, y=t_min,
-                        text=f"<b>{round(t_min)}°</b>",
                         showarrow=False,
                         yanchor="top",
                         font=dict(color="white", size=11),
-                        bgcolor="rgba(0,0,0,0)"
+                    ))
+                    # Min label just inside bottom of bar
+                    annotations.append(dict(
+                        x=slot, y=t_min + 0.5,
+                        xref="x", yref="y",
+                        text=f"<b>{round(t_min)}°</b>",
+                        showarrow=False,
+                        yanchor="bottom",
+                        font=dict(color="white", size=11),
                     ))
 
                 fig7d.update_layout(
@@ -246,11 +242,12 @@ def render_dashboard():
                                showgrid=False, zeroline=False, showticklabels=False),
                     xaxis=dict(
                         tickmode="array",
-                        tickvals=list(range(len(day_order))),
-                        ticktext=day_order,
+                        tickvals=list(range(7)),
+                        ticktext=day_labels,
                         showgrid=False,
-                        tickfont=dict(size=13, color='#1e293b', weight='bold'),
-                        range=[-0.5, len(day_order) - 0.5]
+                        zeroline=False,
+                        tickfont=dict(size=12, color='#1e293b', weight='bold'),
+                        range=[-0.5, 6.5]
                     ),
                     margin=dict(l=10, r=10, t=15, b=10),
                     height=220,
