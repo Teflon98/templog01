@@ -115,15 +115,11 @@ def render_dashboard():
                     </div>
                 """, unsafe_allow_html=True)
 
-                # Countdown wick — components.html bypasses Streamlit's HTML sanitizer.
-                # Technique: full-width blue→red gradient is always rendered underneath.
-                # A white mask div anchored to the right grows from 0% → 100% as time
-                # elapses, "covering" the gradient like a piece of paper sliding over it.
-                # The exposed gradient therefore shrinks from right to left.
-                # run_every=5 on the fragment means the iframe remounts every 5s, not 1s,
-                # which eliminates the per-second flash. The visual position is correct on
-                # each remount since pct_left is recalculated from wall-clock time.
-                covered_pct = f"{(1.0 - pct_left) * 100:.2f}"
+                # Countdown wick — pure CSS transition driven by JS.
+                # Python calculates seconds_left in the current 5-min window and passes
+                # it to the iframe. On mount, JS sets width = pct_left% instantly, then
+                # triggers a CSS transition to 0% over exactly seconds_left seconds.
+                # Runs entirely in the browser — no Streamlit rerenders needed for motion.
                 components.html(f"""
                     <div style="width:100%; padding:10px 0 4px 0; box-sizing:border-box;">
                         <div style="
@@ -133,17 +129,59 @@ def render_dashboard():
                             height: 6px;
                             overflow: hidden;
                             position: relative;
-                            background: linear-gradient(to right, #0000ff, #ff0000);">
-                            <div style="
+                            background: #f1f5f9;">
+                            <div id="wick" style="
                                 position: absolute;
-                                right: 0;
+                                left: 0;
                                 top: 0;
-                                width: {covered_pct}%;
+                                width: {pct_left * 100:.4f}%;
                                 height: 100%;
-                                background: #f1f5f9;">
+                                background: linear-gradient(to right, #0000ff, #ff0000);
+                                background-size: {int(1/pct_left*100) if pct_left > 0 else 100}% 100%;
+                                transition: none;">
                             </div>
                         </div>
                     </div>
+                    <script>
+                        (function() {{
+                            const wick = document.getElementById('wick');
+                            const secondsLeft = {seconds_left:.2f};
+                            const pctLeft = {pct_left:.6f};
+
+                            // The gradient must always represent the full blue→red spectrum
+                            // across the full track width, so background-size is scaled so
+                            // that the visible portion (pctLeft wide) always shows the correct
+                            // color slice — i.e. background-size = 100%/pctLeft
+                            // As the bar shrinks, we re-scale on each animation frame so the
+                            // right edge stays red and left edge stays blue at current width.
+                            // Simpler: just use a fixed full-track gradient and let overflow:hidden clip it.
+                            // Set background-size to 100vw equivalent via a wrapper trick:
+                            // Actually, re-anchor: the gradient is on the TRACK (parent), not the bar.
+                            // Swap: track has the gradient, bar is the f1f5f9 MASK from the right.
+
+                            // Re-implement as mask approach for correct gradient anchoring
+                            const track = wick.parentElement;
+                            track.style.background = 'linear-gradient(to right, #0000ff, #ff0000)';
+
+                            // Repurpose wick as right-side mask (covers the gradient)
+                            wick.style.background = '#f1f5f9';
+                            wick.style.left = 'auto';
+                            wick.style.right = '0';
+
+                            // Current mask width = (1 - pctLeft) * 100%
+                            const startMaskPct = (1 - pctLeft) * 100;
+                            wick.style.width = startMaskPct + '%';
+
+                            // After a single rAF to let the browser paint the start state,
+                            // enable the transition and animate mask to 100% (fully covered)
+                            requestAnimationFrame(function() {{
+                                requestAnimationFrame(function() {{
+                                    wick.style.transition = 'width ' + secondsLeft + 's linear';
+                                    wick.style.width = '100%';
+                                }});
+                            }});
+                        }})();
+                    </script>
                 """, height=26, scrolling=False)
 
                 # Timestamp below wick
