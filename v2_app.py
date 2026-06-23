@@ -78,10 +78,13 @@ def render_dashboard():
             pct_left        = seconds_left / 300.0
 
             # Formatted strings
-            timestamp_str = last_reading_time.strftime("%m/%d/%Y %I:%M:%S %p") \
-                .replace("AM", "a.m.").replace("PM", "p.m.")
-            current_time_str = now_time.strftime("%I:%M:%S %p") \
-                .replace("AM", "a.m.").replace("PM", "p.m.")
+            # m-dd-yy: no leading zero on month, two-digit year
+            _m  = last_reading_time.strftime("%-m")   # Linux; no leading zero
+            _dy = last_reading_time.strftime("%d")
+            _yy = last_reading_time.strftime("%y")
+            _t  = last_reading_time.strftime("%I:%M:%S %p").lstrip("0") \
+                      .replace("AM", "a.m.").replace("PM", "p.m.")
+            timestamp_str = f"{_m}-{_dy}-{_yy} {_t}"
             elapsed_total  = int(seconds_elapsed)
             elapsed_h      = elapsed_total // 3600
             elapsed_m      = (elapsed_total % 3600) // 60
@@ -95,8 +98,8 @@ def render_dashboard():
                 if current_temp > prev_avg + 0.1:   arrow = "↑"
                 elif current_temp < prev_avg - 0.1: arrow = "↓"
 
-            # Hero temperature hue (60–90°F → blue→red)
-            pct = (max(60.0, min(90.0, current_temp)) - 60.0) / (90.0 - 60.0)
+            # Hero temperature hue: 65°F→blue, 76°F→red
+            pct = (max(65.0, min(76.0, current_temp)) - 65.0) / (76.0 - 65.0)
             solid_color = f"rgb({int(255 * pct)}, 0, {int(255 * (1 - pct))})"
 
             # ================================================================
@@ -202,7 +205,7 @@ def render_dashboard():
                             const h = Math.floor(s / 3600);
                             const m = Math.floor((s % 3600) / 60);
                             const sec = s % 60;
-                            return pad(h) + ':' + pad(m) + ':' + pad(sec);
+                            return h + ':' + pad(m) + ':' + pad(sec);
                         }}
 
                         function formatTime(d) {{
@@ -211,7 +214,7 @@ def render_dashboard():
                             const sec = d.getSeconds();
                             const ampm = h >= 12 ? 'p.m.' : 'a.m.';
                             h = h % 12 || 12;
-                            return pad(h) + ':' + pad(min) + ':' + pad(sec) + ' ' + ampm;
+                            return h + ':' + pad(min) + ':' + pad(sec) + ' ' + ampm;
                         }}
 
                         function tick() {{
@@ -288,8 +291,8 @@ def render_dashboard():
                     b = int(palette[idx_lo][2] + frac * (palette[idx_hi][2] - palette[idx_lo][2]))
                     return f"rgb({r},{g},{b})"
 
-                BAND_Y0 = 60.0
-                BAND_Y1 = 61.8  # ~1.8°F tall band; chart range is 60–90 = 30° total
+                BAND_Y0 = -0.055   # paper coords: just below plot bottom edge
+                BAND_Y1 = -0.01    # paper coords: at plot bottom edge
                 slot_minutes = 30
                 current_slot = x_start.replace(minute=(x_start.minute // slot_minutes) * slot_minutes,
                                                second=0, microsecond=0)
@@ -300,7 +303,7 @@ def render_dashboard():
                     color      = hour_to_daynight_color(hour_frac)
                     day_night_shapes.append(dict(
                         type="rect",
-                        xref="x", yref="y",
+                        xref="x", yref="paper",
                         x0=current_slot, x1=min(next_slot, x_end),
                         y0=BAND_Y0, y1=BAND_Y1,
                         fillcolor=color,
@@ -332,7 +335,7 @@ def render_dashboard():
                                zeroline=False, tickfont=dict(color='#64748b', size=11)),
                     xaxis=dict(tickformat="%I%p", gridcolor='#f1f5f9', showgrid=True,
                                tickfont=dict(color='#64748b', size=11), nticks=6),
-                    margin=dict(l=20, r=10, t=5, b=10),
+                    margin=dict(l=20, r=10, t=5, b=32),
                     height=240,
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)',
