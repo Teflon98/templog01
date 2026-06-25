@@ -53,7 +53,11 @@ def render_dashboard():
     try:
         # --- 3. FETCH SENSOR ARRAYS ---
         recent_resp     = supabase.table("sensor_data").select("*").order("created_at", desc=True).limit(288).execute()
-        days7_resp      = supabase.table("sensor_data").select("*").order("created_at", desc=True).limit(2016).execute()
+        # Fetch exactly 7 days back from now using a timestamp filter — more reliable than row limit
+        cutoff_7d = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)).isoformat()
+        days7_resp      = supabase.table("sensor_data").select("*") \
+                            .gte("created_at", cutoff_7d) \
+                            .order("created_at", desc=True).execute()
         min_record_resp = supabase.table("sensor_data").select("*").order("temperature", desc=False).limit(1).execute()
         max_record_resp = supabase.table("sensor_data").select("*").order("temperature", desc=True).limit(1).execute()
 
@@ -366,7 +370,7 @@ def render_dashboard():
                     date_str = f"{d.month}/{d.day}"
                     day_labels.append(f"{name}<br>{date_str}")
 
-                df7d["date_et"] = df7d["local_time"].dt.date
+                df7d["date_et"] = df7d["local_time"].dt.date.astype(str)
                 agg_map = df7d.groupby("date_et")["temperature"].agg(["min", "max"]).to_dict("index")
 
                 fig7d   = go.Figure()
@@ -374,10 +378,11 @@ def render_dashboard():
                 annotations = []
 
                 for slot, cal_date in enumerate(ordered_dates):
-                    if cal_date not in agg_map:
+                    key = cal_date.isoformat()   # match the string keys in agg_map
+                    if key not in agg_map:
                         continue
-                    t_min = float(agg_map[cal_date]["min"])
-                    t_max = float(agg_map[cal_date]["max"])
+                    t_min = float(agg_map[key]["min"])
+                    t_max = float(agg_map[key]["max"])
 
                     x0 = slot - 0.28
                     x1 = slot + 0.28
