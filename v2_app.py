@@ -53,17 +53,24 @@ def render_dashboard():
     try:
         # --- 3. FETCH SENSOR ARRAYS ---
         recent_resp     = supabase.table("sensor_data").select("*").order("created_at", desc=True).limit(288).execute()
-        # Fetch exactly 7 days back from now using a timestamp filter — more reliable than row limit
+        # Fetch last 7 days from raw table
         cutoff_7d = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)).isoformat()
         days7_resp      = supabase.table("sensor_data").select("*") \
                             .gte("created_at", cutoff_7d) \
                             .order("created_at", desc=True).execute()
+        # Also fetch archived daily summaries for the same window
+        days7_archive   = supabase.table("sensor_data_daily").select("*") \
+                            .gte("created_at", cutoff_7d).execute()
         min_record_resp = supabase.table("sensor_data").select("*").order("temperature", desc=False).limit(1).execute()
         max_record_resp = supabase.table("sensor_data").select("*").order("temperature", desc=True).limit(1).execute()
 
         if recent_resp.data and days7_resp.data:
             df24 = pd.DataFrame(recent_resp.data)
             df7d = pd.DataFrame(days7_resp.data)
+            # Merge in archived daily summary rows so pruned days still appear
+            if days7_archive.data:
+                df_archive = pd.DataFrame(days7_archive.data)[["created_at", "temperature", "humidity"]]
+                df7d = pd.concat([df7d, df_archive], ignore_index=True)
             df24["local_time"] = pd.to_datetime(df24["created_at"]).dt.tz_convert('US/Eastern')
             df7d["local_time"] = pd.to_datetime(df7d["created_at"]).dt.tz_convert('US/Eastern')
             df24 = df24.sort_values(by="local_time")
@@ -360,29 +367,32 @@ def render_dashboard():
                     p = (max(RANGE_MIN, min(RANGE_MAX, float(t))) - RANGE_MIN) / (RANGE_MAX - RANGE_MIN)
                     return f"rgb({int(255*p)},0,{int(255*(1.0-p))})"
 
-                today_et      = now_time.date()
-                ordered_dates = [today_et - datetime.timedelta(days=d) for d in range(6, -1, -1)]
+                # Derive today from the dataframe's own timezone — avoids hardcoded offset mismatch
+                et_tz    = df7d["local_time"].dt.tz
+                today_et = datetime.datetime.now(et_tz).date()
 
-                # Two-line tick labels: "Sat\n6/21"  (day name + m/d date)
-                day_labels = []
-                for d in ordered_dates:
-                    name = "Today" if d == today_et else d.strftime("%a")
-                    date_str = f"{d.month}/{d.day}"
-                    day_labels.append(f"{name}<br>{date_str}")
-
+                # Aggregate by date string — normalize both sides to avoid Timestamp vs date type issues
                 df7d["date_et"] = df7d["local_time"].dt.date.astype(str)
                 agg_map = df7d.groupby("date_et")["temperature"].agg(["min", "max"]).to_dict("index")
+
+                # Build ordered list of only dates that have data, sorted ascending (oldest left)
+                # Cap at 7 most recent days
+                available_dates = sorted(agg_map.keys())[-7:]
+
+                # Labels: day name + m/d; rightmost is "Today" if it matches today
+                day_labels = []
+                for ds in available_dates:
+                    d = datetime.date.fromisoformat(ds)
+                    name = "Today" if d == today_et else d.strftime("%a")
+                    day_labels.append(f"{name}<br>{d.month}/{d.day}")
 
                 fig7d   = go.Figure()
                 shapes  = []
                 annotations = []
 
-                for slot, cal_date in enumerate(ordered_dates):
-                    key = cal_date.isoformat()   # match the string keys in agg_map
-                    if key not in agg_map:
-                        continue
-                    t_min = float(agg_map[key]["min"])
-                    t_max = float(agg_map[key]["max"])
+                for slot, ds in enumerate(available_dates):
+                    t_min = float(agg_map[ds]["min"])
+                    t_max = float(agg_map[ds]["max"])
 
                     x0 = slot - 0.28
                     x1 = slot + 0.28
@@ -420,20 +430,20 @@ def render_dashboard():
                         font=dict(color="#1e293b", size=15),
                     ))
 
+                n = len(available_dates)
                 fig7d.update_layout(
                     shapes=shapes,
                     annotations=annotations,
-                    # Padded range: 6° below RANGE_MIN for min labels, 6° above RANGE_MAX for max labels
                     yaxis=dict(range=[54, 96], fixedrange=True,
                                showgrid=False, zeroline=False, showticklabels=False),
                     xaxis=dict(
                         tickmode="array",
-                        tickvals=list(range(7)),
+                        tickvals=list(range(n)),
                         ticktext=day_labels,
                         showgrid=False,
                         zeroline=False,
                         tickfont=dict(size=14, color='#1e293b'),
-                        range=[-0.5, 6.5]
+                        range=[-0.5, n - 0.5]
                     ),
                     margin=dict(l=10, r=10, t=25, b=10),
                     height=260,
