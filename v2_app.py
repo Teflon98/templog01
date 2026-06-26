@@ -71,8 +71,8 @@ def render_dashboard():
             if days7_archive.data:
                 df_archive = pd.DataFrame(days7_archive.data)[["created_at", "temperature", "humidity"]]
                 df7d = pd.concat([df7d, df_archive], ignore_index=True)
-            df24["local_time"] = pd.to_datetime(df24["created_at"]).dt.tz_convert('US/Eastern')
-            df7d["local_time"] = pd.to_datetime(df7d["created_at"]).dt.tz_convert('US/Eastern')
+            df24["local_time"] = pd.to_datetime(df24["created_at"], format='ISO8601').dt.tz_convert('US/Eastern')
+            df7d["local_time"] = pd.to_datetime(df7d["created_at"], format='ISO8601').dt.tz_convert('US/Eastern')
             df24 = df24.sort_values(by="local_time")
 
             latest_record    = df24.iloc[-1]
