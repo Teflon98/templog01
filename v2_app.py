@@ -61,8 +61,11 @@ def render_dashboard():
         # Also fetch archived daily summaries for the same window
         days7_archive   = supabase.table("sensor_data_daily").select("*") \
                             .gte("created_at", cutoff_7d).execute()
-        min_record_resp = supabase.table("sensor_data").select("*").order("temperature", desc=False).limit(1).execute()
-        max_record_resp = supabase.table("sensor_data").select("*").order("temperature", desc=True).limit(1).execute()
+        min_record_resp  = supabase.table("sensor_data").select("created_at,temperature").order("temperature", desc=False).limit(1).execute()
+        max_record_resp  = supabase.table("sensor_data").select("created_at,temperature").order("temperature", desc=True).limit(1).execute()
+        # Also check archived daily summaries for all-time records
+        arc_min_resp     = supabase.table("sensor_data_daily").select("created_at,temperature,summary_date").eq("summary_type", "min").order("temperature", desc=False).limit(1).execute()
+        arc_max_resp     = supabase.table("sensor_data_daily").select("created_at,temperature,summary_date").eq("summary_type", "max").order("temperature", desc=True).limit(1).execute()
 
         if recent_resp.data and days7_resp.data:
             df24 = pd.DataFrame(recent_resp.data)
@@ -457,10 +460,42 @@ def render_dashboard():
             # CARD 4: RECORDS
             # ================================================================
             with st.container(border=True):
-                all_min  = float(min_record_resp.data[0]["temperature"]) if min_record_resp.data else current_temp
-                all_max  = float(max_record_resp.data[0]["temperature"]) if max_record_resp.data else current_temp
-                min_date = pd.to_datetime(min_record_resp.data[0]["created_at"]).tz_convert('US/Eastern').strftime("%b %d, %Y")
-                max_date = pd.to_datetime(max_record_resp.data[0]["created_at"]).tz_convert('US/Eastern').strftime("%b %d, %Y")
+                # Gather candidates from raw table
+                raw_min_temp = float(min_record_resp.data[0]["temperature"]) if min_record_resp.data else None
+                raw_max_temp = float(max_record_resp.data[0]["temperature"]) if max_record_resp.data else None
+                raw_min_ts   = pd.to_datetime(min_record_resp.data[0]["created_at"], format='ISO8601').tz_convert('US/Eastern') if min_record_resp.data else None
+                raw_max_ts   = pd.to_datetime(max_record_resp.data[0]["created_at"], format='ISO8601').tz_convert('US/Eastern') if max_record_resp.data else None
+
+                # Gather candidates from archive table
+                arc_min_temp = float(arc_min_resp.data[0]["temperature"]) if arc_min_resp.data else None
+                arc_max_temp = float(arc_max_resp.data[0]["temperature"]) if arc_max_resp.data else None
+                arc_min_ts   = pd.to_datetime(arc_min_resp.data[0]["created_at"], format='ISO8601').tz_convert('US/Eastern') if arc_min_resp.data else None
+                arc_max_ts   = pd.to_datetime(arc_max_resp.data[0]["created_at"], format='ISO8601').tz_convert('US/Eastern') if arc_max_resp.data else None
+
+                # Pick true all-time min across both sources
+                if raw_min_temp is not None and arc_min_temp is not None:
+                    if arc_min_temp < raw_min_temp:
+                        all_min, min_ts = arc_min_temp, arc_min_ts
+                    else:
+                        all_min, min_ts = raw_min_temp, raw_min_ts
+                elif raw_min_temp is not None:
+                    all_min, min_ts = raw_min_temp, raw_min_ts
+                else:
+                    all_min, min_ts = arc_min_temp, arc_min_ts
+
+                # Pick true all-time max across both sources
+                if raw_max_temp is not None and arc_max_temp is not None:
+                    if arc_max_temp > raw_max_temp:
+                        all_max, max_ts = arc_max_temp, arc_max_ts
+                    else:
+                        all_max, max_ts = raw_max_temp, raw_max_ts
+                elif raw_max_temp is not None:
+                    all_max, max_ts = raw_max_temp, raw_max_ts
+                else:
+                    all_max, max_ts = arc_max_temp, arc_max_ts
+
+                min_date = min_ts.strftime("%b %d, %Y") if min_ts else "—"
+                max_date = max_ts.strftime("%b %d, %Y") if max_ts else "—"
 
                 st.markdown(f"""
                     <div style="display:flex; justify-content:space-around; text-align:center;
